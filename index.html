@@ -1,551 +1,570 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>StrideMap — Your Running Heatmap</title>
 
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-  <!-- Leaflet.heat via CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
-
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 
   <style>
     :root {
       --bg:        #0b0c10;
       --surface:   #13151a;
       --surface2:  #1c1f28;
+      --surface3:  #252933;
       --accent:    #ff5c1a;
       --accent2:   #ff8c42;
       --text:      #e8eaf0;
       --muted:     #6b7280;
       --border:    #252933;
       --radius:    10px;
+      --success:   #22c55e;
+      --danger:    #ef4444;
     }
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); }
 
-    html, body {
-      height: 100%;
-      font-family: 'DM Sans', sans-serif;
+    /* ── AUTH SCREEN ─────────────────────────────── */
+    #auth-screen {
+      position: fixed; inset: 0; z-index: 9000;
       background: var(--bg);
-      color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem;
     }
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 2.5rem 2rem;
+      width: 100%; max-width: 400px;
+      display: flex; flex-direction: column; gap: 1.5rem;
+      animation: fadeUp .4s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity:0; transform: translateY(20px); }
+      to   { opacity:1; transform: translateY(0); }
+    }
+    .auth-logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.2rem; letter-spacing: .1em;
+      text-align: center;
+    }
+    .auth-logo span { color: var(--accent); }
+    .auth-subtitle { text-align: center; color: var(--muted); font-size: .88rem; margin-top: -.8rem; }
+    .auth-tabs { display: flex; background: var(--surface2); border-radius: 8px; padding: 3px; gap: 3px; }
+    .auth-tab {
+      flex: 1; padding: .5rem; border: none; border-radius: 6px;
+      font-family: 'DM Sans', sans-serif; font-size: .85rem; font-weight: 600;
+      cursor: pointer; transition: all .2s;
+      background: transparent; color: var(--muted);
+    }
+    .auth-tab.active { background: var(--surface3); color: var(--text); }
+    .field { display: flex; flex-direction: column; gap: .4rem; }
+    .field label { font-size: .78rem; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+    .field input {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: .7rem 1rem;
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: .9rem;
+      outline: none; transition: border-color .2s;
+    }
+    .field input:focus { border-color: var(--accent); }
+    .auth-error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); border-radius: 8px; padding: .65rem 1rem; font-size: .83rem; color: #fca5a5; display: none; }
+    .auth-error.show { display: block; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+      padding: .6rem 1.2rem; border-radius: var(--radius);
+      font-family: 'DM Sans', sans-serif; font-size: .88rem; font-weight: 600;
+      cursor: pointer; transition: all .2s; text-decoration: none; border: none;
+    }
+    .btn-primary { background: var(--accent); color: white; width: 100%; padding: .75rem; font-size: .95rem; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent2); transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--surface2); }
+    .btn-danger { background: rgba(239,68,68,.1); color: #fca5a5; border: 1px solid rgba(239,68,68,.2); }
+    .btn-danger:hover { background: rgba(239,68,68,.2); }
+    .btn-sm { padding: .3rem .7rem; font-size: .78rem; border-radius: 6px; }
 
-    /* ── HEADER ─────────────────────────────────────── */
+    /* ── HEADER ──────────────────────────────────── */
     header {
-      position: sticky;
-      top: 0;
-      z-index: 1000;
-      background: rgba(11,12,16,.92);
-      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 1000;
+      background: rgba(11,12,16,.92); backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 2rem;
-      height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem; height: 60px;
     }
     .logo {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.7rem;
-      letter-spacing: .08em;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: .45rem;
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.7rem;
+      letter-spacing: .08em; display: flex; align-items: center; gap: .45rem;
     }
     .logo span { color: var(--accent); }
     .logo-icon {
-      width: 28px; height: 28px;
-      background: var(--accent);
-      border-radius: 6px;
-      display: flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; background: var(--accent);
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
     }
     .logo-icon svg { width: 16px; height: 16px; fill: white; }
-
     nav { display: flex; gap: 1.4rem; align-items: center; }
-    nav a {
-      font-size: .85rem;
-      font-weight: 500;
-      color: var(--muted);
-      text-decoration: none;
-      letter-spacing: .04em;
-      transition: color .2s;
-    }
+    nav a { font-size: .85rem; font-weight: 500; color: var(--muted); text-decoration: none; letter-spacing: .04em; transition: color .2s; }
     nav a:hover { color: var(--text); }
+    .user-bar { display: flex; align-items: center; gap: .7rem; }
+    .user-email { font-size: .8rem; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    .btn {
-      display: inline-flex; align-items: center; gap: .4rem;
-      padding: .45rem 1.1rem;
-      border-radius: var(--radius);
-      font-family: 'DM Sans', sans-serif;
-      font-size: .85rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all .2s;
-      text-decoration: none;
-    }
-    .btn-primary {
-      background: var(--accent);
-      color: white;
-      border: none;
-    }
-    .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
-    .btn-ghost {
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    .btn-ghost:hover { background: var(--surface2); }
-
-    /* ── HERO STATS BAR ─────────────────────────────── */
+    /* ── STATS BAR ───────────────────────────────── */
     .stats-bar {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: center;
-      gap: 0;
-      overflow-x: auto;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; justify-content: center; overflow-x: auto;
     }
     .stat-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: .85rem 2.2rem;
-      border-right: 1px solid var(--border);
-      min-width: 130px;
+      display: flex; flex-direction: column; align-items: center;
+      padding: .85rem 2.2rem; border-right: 1px solid var(--border); min-width: 130px;
     }
     .stat-item:last-child { border-right: none; }
-    .stat-num {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.6rem;
-      color: var(--accent);
-      letter-spacing: .04em;
-      line-height: 1;
-    }
-    .stat-label {
-      font-size: .7rem;
-      font-weight: 500;
-      color: var(--muted);
-      letter-spacing: .1em;
-      text-transform: uppercase;
-      margin-top: .2rem;
-    }
+    .stat-num { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; color: var(--accent); letter-spacing: .04em; line-height: 1; }
+    .stat-label { font-size: .7rem; font-weight: 500; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-top: .2rem; }
 
-    /* ── MAIN BODY ──────────────────────────────────── */
-    .main {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      padding: 1.5rem 2rem 2rem;
-      gap: 1.2rem;
-      max-width: 1400px;
-      margin: 0 auto;
-      width: 100%;
-    }
+    /* ── MAIN ────────────────────────────────────── */
+    .main { display: flex; flex-direction: column; padding: 1.5rem 2rem 2rem; gap: 1.2rem; max-width: 1400px; margin: 0 auto; width: 100%; }
+    .section-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: .1em; color: var(--muted); margin-bottom: .5rem; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
 
-    .section-title {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.2rem;
-      letter-spacing: .1em;
-      color: var(--muted);
-      margin-bottom: .5rem;
-    }
-
-    /* ── MAP CARD ───────────────────────────────────── */
-    .map-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-      position: relative;
-    }
+    /* ── MAP ─────────────────────────────────────── */
+    .map-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
     .map-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: .75rem 1.2rem;
-      border-bottom: 1px solid var(--border);
-      gap: 1rem;
-      flex-wrap: wrap;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .75rem 1.2rem; border-bottom: 1px solid var(--border); gap: 1rem; flex-wrap: wrap;
     }
     .map-toolbar-left { display: flex; align-items: center; gap: .8rem; }
     .map-toolbar-right { display: flex; align-items: center; gap: .8rem; }
-
-    .badge {
-      display: inline-flex; align-items: center; gap: .35rem;
-      padding: .3rem .8rem;
-      border-radius: 20px;
-      font-size: .75rem;
-      font-weight: 600;
-      letter-spacing: .04em;
-    }
+    .badge { display: inline-flex; align-items: center; gap: .35rem; padding: .3rem .8rem; border-radius: 20px; font-size: .75rem; font-weight: 600; letter-spacing: .04em; }
     .badge-orange { background: rgba(255,92,26,.15); color: var(--accent); border: 1px solid rgba(255,92,26,.3); }
     .badge-muted { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
-
-    #map {
-      width: 100%;
-      height: 520px;
-      background: #111418;
-    }
-
-    /* Leaflet dark tile override */
+    .badge-green { background: rgba(34,197,94,.1); color: #4ade80; border: 1px solid rgba(34,197,94,.2); }
+    #map { width: 100%; height: 520px; background: #111418; }
     .leaflet-tile-pane { filter: brightness(.85) saturate(.6); }
-
-    /* ── LEGEND ─────────────────────────────────────── */
-    .legend-bar {
-      display: flex;
-      align-items: center;
-      gap: .8rem;
-      padding: .7rem 1.2rem;
-      border-top: 1px solid var(--border);
-    }
+    .legend-bar { display: flex; align-items: center; gap: .8rem; padding: .7rem 1.2rem; border-top: 1px solid var(--border); }
     .legend-label { font-size: .75rem; color: var(--muted); white-space: nowrap; }
     .legend-gradient {
-      flex: 1;
-      height: 10px;
-      border-radius: 6px;
-      background: linear-gradient(to right,
-        #2d004b,
-        #6b0095,
-        #b4006a,
-        #e84a00,
-        #ff9500,
-        #ffdd00,
-        #ffffff
-      );
-      max-width: 320px;
+      flex: 1; height: 10px; border-radius: 6px; max-width: 320px;
+      background: linear-gradient(to right, #1a0030, #4b0082, #8b0050, #cc2200, #ff5c1a, #ffaa00, #ffee66, #ffffff);
     }
 
-    /* ── UPLOAD ZONE ────────────────────────────────── */
+    /* ── UPLOAD ──────────────────────────────────── */
     .upload-zone {
-      border: 2px dashed var(--border);
-      border-radius: 14px;
-      padding: 2rem;
-      text-align: center;
-      cursor: pointer;
-      transition: all .25s;
-      background: var(--surface);
-      position: relative;
+      border: 2px dashed var(--border); border-radius: 14px; padding: 2rem;
+      text-align: center; cursor: pointer; transition: all .25s;
+      background: var(--surface); position: relative; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
     }
-    .upload-zone:hover, .upload-zone.drag-over {
-      border-color: var(--accent);
-      background: rgba(255,92,26,.05);
-    }
-    .upload-zone input[type="file"] {
-      position: absolute; inset: 0; opacity: 0; cursor: pointer;
-    }
-    .upload-icon {
-      width: 48px; height: 48px;
-      background: rgba(255,92,26,.1);
-      border-radius: 12px;
-      display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 1rem;
-    }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: rgba(255,92,26,.05); }
+    .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .upload-icon { width: 48px; height: 48px; background: rgba(255,92,26,.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; }
     .upload-icon svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; }
     .upload-title { font-weight: 600; margin-bottom: .3rem; }
     .upload-sub { font-size: .82rem; color: var(--muted); }
+    .upload-progress { margin-top: 1rem; font-size: .8rem; color: var(--accent); min-height: 1.2em; }
 
-    /* ── ACTIVITY LIST ──────────────────────────────── */
-    .activities-panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-    }
-    .panel-header {
-      padding: .9rem 1.2rem;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .panel-title {
-      font-weight: 600;
-      font-size: .9rem;
-    }
-    #activity-list { list-style: none; max-height: 220px; overflow-y: auto; }
+    /* ── ACTIVITY LIST ───────────────────────────── */
+    .activities-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    .panel-header { padding: .9rem 1.2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .panel-title { font-weight: 600; font-size: .9rem; }
+    #activity-list { list-style: none; max-height: 260px; overflow-y: auto; }
     #activity-list::-webkit-scrollbar { width: 4px; }
     #activity-list::-webkit-scrollbar-track { background: transparent; }
     #activity-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
     .activity-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: .7rem 1.2rem;
-      border-bottom: 1px solid var(--border);
-      font-size: .85rem;
-      transition: background .15s;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .65rem 1.2rem; border-bottom: 1px solid var(--border);
+      font-size: .85rem; transition: background .15s; gap: .5rem;
     }
     .activity-item:last-child { border-bottom: none; }
     .activity-item:hover { background: var(--surface2); }
-    .activity-name { font-weight: 500; }
-    .activity-meta { color: var(--muted); font-size: .78rem; }
-    .activity-del {
-      background: none; border: none; cursor: pointer;
-      color: var(--muted); font-size: 1rem; padding: 0 .3rem;
-      transition: color .15s;
-    }
-    .activity-del:hover { color: var(--accent); }
-    .empty-state {
-      padding: 2rem;
-      text-align: center;
-      color: var(--muted);
-      font-size: .85rem;
-    }
+    .activity-info { flex: 1; min-width: 0; }
+    .activity-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .activity-meta { color: var(--muted); font-size: .75rem; margin-top: .1rem; }
+    .activity-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: .9rem; padding: .2rem .4rem; transition: color .15s; border-radius: 4px; flex-shrink: 0; }
+    .activity-del:hover { color: var(--danger); background: rgba(239,68,68,.1); }
+    .activity-saving { color: var(--accent); font-size: .72rem; }
+    .empty-state { padding: 2rem; text-align: center; color: var(--muted); font-size: .85rem; }
 
-    /* ── FOOTER ─────────────────────────────────────── */
+    /* ── LOADING OVERLAY ─────────────────────────── */
+    #loading-overlay {
+      position: fixed; inset: 0; z-index: 8000;
+      background: rgba(11,12,16,.85); backdrop-filter: blur(4px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+      display: none;
+    }
+    #loading-overlay.show { display: flex; }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: var(--muted); font-size: .9rem; }
+
+    /* ── FOOTER ──────────────────────────────────── */
     footer {
-      margin-top: auto;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      padding: 1.2rem 2rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: .8rem;
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 1.2rem 2rem; display: flex; justify-content: space-between;
+      align-items: center; flex-wrap: wrap; gap: .8rem;
     }
-    .footer-logo {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.2rem;
-      letter-spacing: .08em;
-      color: var(--muted);
-    }
+    .footer-logo { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: .08em; color: var(--muted); }
     .footer-logo span { color: var(--accent); }
     .footer-links { display: flex; gap: 1.2rem; }
     .footer-links a { font-size: .78rem; color: var(--muted); text-decoration: none; }
     .footer-links a:hover { color: var(--text); }
     .footer-copy { font-size: .75rem; color: var(--muted); }
 
-    /* ── TOAST ──────────────────────────────────────── */
+    /* ── TOAST ───────────────────────────────────── */
     #toast {
       position: fixed; bottom: 1.5rem; right: 1.5rem;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--accent);
-      color: var(--text);
-      padding: .75rem 1.2rem;
-      border-radius: 8px;
-      font-size: .85rem;
-      font-weight: 500;
-      transform: translateX(120%);
-      transition: transform .3s cubic-bezier(.4,0,.2,1);
-      z-index: 9999;
-      max-width: 280px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-left: 3px solid var(--accent); color: var(--text);
+      padding: .75rem 1.2rem; border-radius: 8px; font-size: .85rem; font-weight: 500;
+      transform: translateX(120%); transition: transform .3s cubic-bezier(.4,0,.2,1);
+      z-index: 9999; max-width: 300px;
     }
     #toast.show { transform: translateX(0); }
+    #toast.success { border-left-color: var(--success); }
+    #toast.error { border-left-color: var(--danger); }
 
-    @media (max-width: 640px) {
-      .main { padding: 1rem; }
+    /* ── APP SHELL (hidden until auth) ──────────── */
+    #app { display: none; flex-direction: column; min-height: 100vh; }
+    #app.visible { display: flex; }
+
+    @media (max-width: 700px) {
+      .two-col { grid-template-columns: 1fr; }
       nav { display: none; }
       header { padding: 0 1rem; }
+      .main { padding: 1rem; }
       .stat-item { padding: .7rem 1rem; min-width: 90px; }
     }
   </style>
 </head>
 <body>
 
-<!-- ── HEADER ───────────────────────────────────────── -->
-<header>
-  <div class="logo">
-    <div class="logo-icon">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M13 3L5 14h7l-1 7 8-11h-7l1-7z"/>
-      </svg>
-    </div>
-    Stride<span>Map</span>
-  </div>
-  <nav>
-    <a href="#">Dashboard</a>
-    <a href="#">Activities</a>
-    <a href="#">Stats</a>
-    <a href="#">Settings</a>
-  </nav>
-  <div style="display:flex; gap:.6rem;">
-    <label class="btn btn-primary" style="cursor:pointer;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
-      </svg>
-      Import GPX
-      <input type="file" id="gpx-header-input" accept=".gpx" multiple style="display:none"/>
-    </label>
-  </div>
-</header>
+<!-- ══════════════════════════════════════════════════
+     CONFIGURATION — paste your Supabase credentials here
+     ══════════════════════════════════════════════════ -->
+<script>
+  const SUPABASE_URL  = 'https://nqsclfzjrgryzdwzmdhj.supabase.co';
+  const SUPABASE_KEY  = 'sb_publishable_RQwtEgeNhd4su2hfnT3JeQ_DpyNQ7Y_';
+</script>
+<!-- ══════════════════════════════════════════════════ -->
 
-<!-- ── STATS BAR ────────────────────────────────────── -->
-<div class="stats-bar">
-  <div class="stat-item">
-    <div class="stat-num" id="stat-runs">0</div>
-    <div class="stat-label">Activities</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-num" id="stat-km">0.0</div>
-    <div class="stat-label">Total km</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-num" id="stat-points">0</div>
-    <div class="stat-label">GPS Points</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-num" id="stat-heatpts">0</div>
-    <div class="stat-label">Heat Points</div>
+<!-- ── AUTH SCREEN ─────────────────────────────────── -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">Stride<span>Map</span></div>
+    <div class="auth-subtitle">Your personal running heatmap</div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Sign in</button>
+      <button class="auth-tab" id="tab-signup" onclick="switchTab('signup')">Create account</button>
+    </div>
+
+    <div id="auth-error" class="auth-error"></div>
+
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email"/>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password"/>
+    </div>
+
+    <button class="btn btn-primary" id="auth-btn" onclick="handleAuth()">Sign in</button>
   </div>
 </div>
 
-<!-- ── MAIN ─────────────────────────────────────────── -->
-<div class="main">
-
-  <!-- Map section -->
-  <div>
-    <div class="section-title">Heatmap</div>
-    <div class="map-card">
-      <div class="map-toolbar">
-        <div class="map-toolbar-left">
-          <span class="badge badge-orange" id="map-status">No data loaded</span>
-          <span class="badge badge-muted" id="zoom-badge">Zoom: 13</span>
-        </div>
-        <div class="map-toolbar-right">
-          <button class="btn btn-ghost" id="btn-fit">Fit all tracks</button>
-          <button class="btn btn-ghost" id="btn-clear">Clear all</button>
-        </div>
-      </div>
-      <div id="map"></div>
-      <div class="legend-bar">
-        <span class="legend-label">Low freq</span>
-        <div class="legend-gradient"></div>
-        <span class="legend-label">High freq</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Upload + Activity list (side by side on wide screens) -->
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; flex-wrap:wrap;">
-
-    <!-- Drop zone -->
-    <div>
-      <div class="section-title">Import</div>
-      <div class="upload-zone" id="drop-zone">
-        <input type="file" id="gpx-input" accept=".gpx" multiple/>
-        <div class="upload-icon">
-          <svg viewBox="0 0 24 24" stroke-width="1.8">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke-linecap="round"/>
-            <polyline points="17 8 12 3 7 8" stroke-linecap="round" stroke-linejoin="round"/>
-            <line x1="12" y1="3" x2="12" y2="15" stroke-linecap="round"/>
-          </svg>
-        </div>
-        <div class="upload-title">Drop GPX files here</div>
-        <div class="upload-sub">or click to browse — supports multiple files<br>from Garmin Connect &amp; Strava exports</div>
-      </div>
-    </div>
-
-    <!-- Activity list -->
-    <div>
-      <div class="section-title">Activities</div>
-      <div class="activities-panel">
-        <div class="panel-header">
-          <span class="panel-title">Loaded runs</span>
-          <span class="badge badge-muted" id="act-count">0 files</span>
-        </div>
-        <ul id="activity-list">
-          <li class="empty-state">No activities yet. Import some GPX files to begin.</li>
-        </ul>
-      </div>
-    </div>
-
-  </div>
+<!-- ── LOADING OVERLAY ──────────────────────────────── -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Loading activities…</div>
 </div>
 
-<!-- ── FOOTER ────────────────────────────────────────── -->
-<footer>
-  <div class="footer-logo">Stride<span>Map</span></div>
-  <div class="footer-links">
-    <a href="#">Privacy</a>
-    <a href="#">About</a>
-    <a href="#">GitHub</a>
+<!-- ── APP SHELL ────────────────────────────────────── -->
+<div id="app">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M13 3L5 14h7l-1 7 8-11h-7l1-7z"/></svg>
+      </div>
+      Stride<span>Map</span>
+    </div>
+    <nav>
+      <a href="#">Dashboard</a>
+      <a href="#">Activities</a>
+      <a href="#">Stats</a>
+    </nav>
+    <div class="user-bar">
+      <span class="user-email" id="user-email-display"></span>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Import GPX
+        <input type="file" id="gpx-header-input" accept=".gpx" multiple style="display:none"/>
+      </label>
+      <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign out</button>
+    </div>
+  </header>
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="stat-item"><div class="stat-num" id="stat-runs">0</div><div class="stat-label">Activities</div></div>
+    <div class="stat-item"><div class="stat-num" id="stat-km">0.0</div><div class="stat-label">Total km</div></div>
+    <div class="stat-item"><div class="stat-num" id="stat-points">0</div><div class="stat-label">GPS Points</div></div>
+    <div class="stat-item"><div class="stat-num" id="stat-heatpts">0</div><div class="stat-label">Heat Points</div></div>
   </div>
-  <div class="footer-copy">All data stays in your browser. Nothing is uploaded.</div>
-</footer>
+
+  <!-- Main body -->
+  <div class="main">
+
+    <!-- Map -->
+    <div>
+      <div class="section-title">Heatmap</div>
+      <div class="map-card">
+        <div class="map-toolbar">
+          <div class="map-toolbar-left">
+            <span class="badge badge-orange" id="map-status">No data loaded</span>
+            <span class="badge badge-muted" id="zoom-badge">Zoom: 7</span>
+            <span class="badge badge-green" id="sync-badge" style="display:none">✓ Synced</span>
+          </div>
+          <div class="map-toolbar-right">
+            <button class="btn btn-ghost btn-sm" id="btn-fit">Fit all tracks</button>
+            <button class="btn btn-ghost btn-sm" id="btn-clear">Clear all</button>
+          </div>
+        </div>
+        <div id="map"></div>
+        <div class="legend-bar">
+          <span class="legend-label">Low freq</span>
+          <div class="legend-gradient"></div>
+          <span class="legend-label">High freq</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload + List -->
+    <div class="two-col">
+      <div>
+        <div class="section-title">Import</div>
+        <div class="upload-zone" id="drop-zone">
+          <input type="file" id="gpx-input" accept=".gpx" multiple/>
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24" stroke-width="1.8">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke-linecap="round"/>
+              <polyline points="17 8 12 3 7 8" stroke-linecap="round" stroke-linejoin="round"/>
+              <line x1="12" y1="3" x2="12" y2="15" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="upload-title">Drop GPX files here</div>
+          <div class="upload-sub">or click to browse — supports multiple files<br>from Garmin Connect &amp; Strava exports</div>
+          <div class="upload-progress" id="upload-progress"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Activities</div>
+        <div class="activities-panel">
+          <div class="panel-header">
+            <span class="panel-title">Saved runs</span>
+            <span class="badge badge-muted" id="act-count">0 files</span>
+          </div>
+          <ul id="activity-list">
+            <li class="empty-state">No activities yet. Import some GPX files to begin.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <div class="footer-logo">Stride<span>Map</span></div>
+    <div class="footer-links"><a href="#">Privacy</a><a href="#">About</a><a href="#">GitHub</a></div>
+    <div class="footer-copy">Your data is stored securely in Supabase. GPX files never leave your account.</div>
+  </footer>
+
+</div>
 
 <div id="toast"></div>
 
 <script>
+// ── SUPABASE CLIENT ───────────────────────────────────
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentUser = null;
+let activities   = [];
+let allPoints    = [];
+let totalKm      = 0;
+let heatLayer    = null;
+let authMode     = 'login';
+
+// ── AUTH ──────────────────────────────────────────────
+function switchTab(mode) {
+  authMode = mode;
+  document.getElementById('tab-login').classList.toggle('active', mode === 'login');
+  document.getElementById('tab-signup').classList.toggle('active', mode === 'signup');
+  document.getElementById('auth-btn').textContent = mode === 'login' ? 'Sign in' : 'Create account';
+  document.getElementById('auth-error').classList.remove('show');
+}
+
+async function handleAuth() {
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const btn      = document.getElementById('auth-btn');
+  const errEl    = document.getElementById('auth-error');
+  errEl.classList.remove('show');
+
+  if (!email || !password) { showAuthError('Please enter email and password.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = authMode === 'login' ? 'Signing in…' : 'Creating account…';
+
+  let error;
+  if (authMode === 'login') {
+    ({ error } = await sb.auth.signInWithPassword({ email, password }));
+  } else {
+    ({ error } = await sb.auth.signUp({ email, password }));
+  }
+
+  btn.disabled = false;
+  btn.textContent = authMode === 'login' ? 'Sign in' : 'Create account';
+
+  if (error) { showAuthError(error.message); return; }
+  if (authMode === 'signup') {
+    showAuthError('✓ Account created! Check your email to confirm, then sign in.'); return;
+  }
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg; el.classList.add('show');
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  activities = []; allPoints = []; totalKm = 0;
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('auth-screen').style.display = 'flex';
+}
+
+// Listen for auth state changes
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (session?.user) {
+    currentUser = session.user;
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app').classList.add('visible');
+    document.getElementById('user-email-display').textContent = currentUser.email;
+    initMap();
+    await loadActivities();
+  }
+});
+
 // ── MAP SETUP ─────────────────────────────────────────
-const map = L.map('map', { zoomControl: true }).setView([52.5, 5.3], 7);
+let mapInitialized = false;
+let map;
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '© OpenStreetMap, © CARTO',
-  subdomains: 'abcd',
-  maxZoom: 19
-}).addTo(map);
+function initMap() {
+  if (mapInitialized) return;
+  mapInitialized = true;
 
-// ── HEATMAP ───────────────────────────────────────────
-// Custom gradient: dark-violet → purple → red-orange → orange → yellow → white
-const heatGradient = {
-  0.0: '#1a0030',
-  0.15: '#4b0082',
-  0.3:  '#8b0050',
-  0.45: '#cc2200',
-  0.6:  '#ff5c1a',
-  0.75: '#ffaa00',
-  0.88: '#ffee66',
-  1.0:  '#ffffff'
-};
-
-let heatLayer = null;
-let allPoints = []; // [lat, lng, intensity]
-let activities = [];
-let totalKm = 0;
-
-function rebuildHeat() {
-  if (heatLayer) map.removeLayer(heatLayer);
-  if (allPoints.length === 0) return;
-
-  const zoom = map.getZoom();
-  // Radius and blur scale with zoom for natural merging at low zoom
-  const radius = Math.max(6, Math.round(zoom * 1.2));
-  const blur   = Math.max(10, Math.round(zoom * 1.8));
-
-  heatLayer = L.heatLayer(allPoints, {
-    radius,
-    blur,
-    maxZoom: 18,
-    gradient: heatGradient,
-    minOpacity: 0.55
+  map = L.map('map', { zoomControl: true }).setView([52.5, 5.3], 7);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CARTO', subdomains: 'abcd', maxZoom: 19
   }).addTo(map);
 
-  // Update stats
+  map.on('zoomend', () => {
+    document.getElementById('zoom-badge').textContent = `Zoom: ${map.getZoom()}`;
+    rebuildHeat();
+  });
+  document.getElementById('zoom-badge').textContent = `Zoom: ${map.getZoom()}`;
+}
+
+// ── HEATMAP ───────────────────────────────────────────
+const heatGradient = {
+  0.0: '#1a0030', 0.15: '#4b0082', 0.3: '#8b0050',
+  0.45: '#cc2200', 0.6: '#ff5c1a', 0.75: '#ffaa00',
+  0.88: '#ffee66', 1.0: '#ffffff'
+};
+
+function rebuildHeat() {
+  if (!map) return;
+  if (heatLayer) map.removeLayer(heatLayer);
+  if (allPoints.length === 0) return;
+  const zoom   = map.getZoom();
+  const radius = Math.max(6, Math.round(zoom * 1.2));
+  const blur   = Math.max(10, Math.round(zoom * 1.8));
+  heatLayer = L.heatLayer(allPoints, { radius, blur, maxZoom: 18, gradient: heatGradient, minOpacity: 0.55 }).addTo(map);
   document.getElementById('stat-heatpts').textContent = allPoints.length.toLocaleString();
   document.getElementById('map-status').textContent = `${activities.length} track${activities.length !== 1 ? 's' : ''} loaded`;
 }
 
-map.on('zoomend', () => {
-  document.getElementById('zoom-badge').textContent = `Zoom: ${map.getZoom()}`;
+// ── LOAD FROM SUPABASE ────────────────────────────────
+async function loadActivities() {
+  showLoading('Loading your activities…');
+  const { data, error } = await sb.from('activities')
+    .select('id, name, date, distance_km, duration_s, elevation_m, point_count, gpx_raw, activity_type, calories, avg_heartrate, max_heartrate, avg_pace')
+    .order('date', { ascending: false });
+
+  hideLoading();
+
+  if (error) { showToast('Failed to load activities', 'error'); return; }
+  if (!data || data.length === 0) { updateActivityList(); return; }
+
+  data.forEach(row => {
+    if (!row.gpx_raw) return;
+    const pts = extractPoints(row.gpx_raw);
+    if (pts.length === 0) return;
+    activities.push({
+      id: row.id, label: row.name, pts,
+      km: row.distance_km || 0,
+      duration_s: row.duration_s,
+      elevation_m: row.elevation_m,
+      date: row.date
+    });
+    pts.forEach(p => allPoints.push([p[0], p[1], 1]));
+    totalKm += (row.distance_km || 0);
+  });
+
+  updateStats();
+  updateActivityList();
   rebuildHeat();
-});
-map.on('zoomend', () => {
-  document.getElementById('zoom-badge').textContent = `Zoom: ${map.getZoom()}`;
-});
+
+  if (allPoints.length > 0) {
+    fitMap();
+    document.getElementById('sync-badge').style.display = 'inline-flex';
+  }
+  showToast(`Loaded ${activities.length} activit${activities.length !== 1 ? 'ies' : 'y'} from cloud`, 'success');
+}
+
+function fitMap() {
+  if (!map || allPoints.length === 0) return;
+  const lats = allPoints.map(p => p[0]);
+  const lngs = allPoints.map(p => p[1]);
+  map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]], { padding: [30,30] });
+}
 
 // ── GPX PARSING ───────────────────────────────────────
-function parseGPX(text) {
+function extractPoints(gpxText) {
   const parser = new DOMParser();
-  const xml = parser.parseFromString(text, 'application/xml');
-  const trkpts = xml.querySelectorAll('trkpt');
+  const xml = parser.parseFromString(gpxText, 'application/xml');
   const pts = [];
-  trkpts.forEach(pt => {
+  xml.querySelectorAll('trkpt').forEach(pt => {
     const lat = parseFloat(pt.getAttribute('lat'));
     const lon = parseFloat(pt.getAttribute('lon'));
     if (!isNaN(lat) && !isNaN(lon)) pts.push([lat, lon]);
   });
-  // Also check wpt and rtept
   if (pts.length === 0) {
     xml.querySelectorAll('wpt, rtept').forEach(pt => {
       const lat = parseFloat(pt.getAttribute('lat'));
@@ -553,51 +572,188 @@ function parseGPX(text) {
       if (!isNaN(lat) && !isNaN(lon)) pts.push([lat, lon]);
     });
   }
-  // Extract name
+  return pts;
+}
+
+function parseGPXFull(text, filename) {
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(text, 'application/xml');
+  const pts  = extractPoints(text);
+
   const nameEl = xml.querySelector('name');
-  const name = nameEl ? nameEl.textContent.trim() : null;
-  return { pts, name };
+  const name   = (nameEl ? nameEl.textContent.trim() : '') || filename.replace('.gpx','').replace(/_/g,' ');
+
+  // Date from first trkpt time element
+  let date = null;
+  const timeEl = xml.querySelector('trkpt time, time');
+  if (timeEl) date = timeEl.textContent.trim().split('T')[0];
+
+  // Distance from track points
+  let distKm = 0;
+  for (let i = 1; i < pts.length; i++) distKm += haversineKm(pts[i-1], pts[i]);
+
+  // Elevation gain from ele elements
+  const eles = Array.from(xml.querySelectorAll('trkpt ele')).map(e => parseFloat(e.textContent));
+  let elev = 0, desc = 0;
+  for (let i = 1; i < eles.length; i++) {
+    const diff = eles[i] - eles[i-1];
+    if (diff > 0) elev += diff; else desc += Math.abs(diff);
+  }
+
+  // Heart rate (Garmin extension)
+  const hrEls = Array.from(xml.querySelectorAll('hr, HeartRateBpm value, heartrate'));
+  let avgHr = null, maxHr = null;
+  if (hrEls.length > 0) {
+    const hrs = hrEls.map(e => parseInt(e.textContent)).filter(n => !isNaN(n) && n > 0);
+    if (hrs.length) {
+      avgHr = Math.round(hrs.reduce((a,b)=>a+b,0)/hrs.length);
+      maxHr = Math.max(...hrs);
+    }
+  }
+
+  // Cadence (Garmin extension)
+  const cadEls = Array.from(xml.querySelectorAll('cad, RunCadence, cadence'));
+  let avgCad = null, maxCad = null;
+  if (cadEls.length > 0) {
+    const cads = cadEls.map(e => parseInt(e.textContent)).filter(n => !isNaN(n) && n > 0);
+    if (cads.length) {
+      avgCad = Math.round(cads.reduce((a,b)=>a+b,0)/cads.length);
+      maxCad = Math.max(...cads);
+    }
+  }
+
+  // Duration from timestamps
+  let durationS = null;
+  const times = Array.from(xml.querySelectorAll('trkpt time')).map(e => new Date(e.textContent));
+  if (times.length >= 2) {
+    durationS = Math.round((times[times.length-1] - times[0]) / 1000);
+  }
+
+  // Avg pace (min/km)
+  let avgPace = null;
+  if (durationS && distKm > 0) {
+    const paceS = durationS / distKm;
+    const pm = Math.floor(paceS / 60);
+    const ps = Math.round(paceS % 60);
+    avgPace = `${pm}:${String(ps).padStart(2,'0')}`;
+  }
+
+  return {
+    name, date, pts,
+    distance_km:   Math.round(distKm * 100) / 100,
+    elevation_m:   Math.round(elev),
+    descent_m:     Math.round(desc),
+    avg_heartrate: avgHr,
+    max_heartrate: maxHr,
+    avg_cadence:   avgCad,
+    max_cadence:   maxCad,
+    duration_s:    durationS,
+    avg_pace:      avgPace,
+    point_count:   pts.length
+  };
 }
 
 function haversineKm(a, b) {
   const R = 6371;
   const dLat = (b[0]-a[0]) * Math.PI/180;
   const dLon = (b[1]-a[1]) * Math.PI/180;
-  const s = Math.sin(dLat/2)**2 +
-    Math.cos(a[0]*Math.PI/180) * Math.cos(b[0]*Math.PI/180) * Math.sin(dLon/2)**2;
+  const s = Math.sin(dLat/2)**2 + Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dLon/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
 }
 
-function trackDistanceKm(pts) {
-  let d = 0;
-  for (let i = 1; i < pts.length; i++) d += haversineKm(pts[i-1], pts[i]);
-  return d;
+// ── SAVE TO SUPABASE ──────────────────────────────────
+async function saveActivity(parsed, gpxRaw) {
+  const { data, error } = await sb.from('activities').insert([{
+    user_id:       currentUser.id,
+    activity_type: 'Бег',
+    name:          parsed.name,
+    date:          parsed.date || new Date().toISOString().split('T')[0],
+    distance_km:   parsed.distance_km,
+    duration_s:    parsed.duration_s,
+    elevation_m:   parsed.elevation_m,
+    descent_m:     parsed.descent_m,
+    avg_heartrate: parsed.avg_heartrate,
+    max_heartrate: parsed.max_heartrate,
+    avg_cadence:   parsed.avg_cadence,
+    max_cadence:   parsed.max_cadence,
+    avg_pace:      parsed.avg_pace,
+    point_count:   parsed.point_count,
+    gpx_raw:       gpxRaw
+  }]).select('id').single();
+
+  if (error) { console.error('Save error:', error); return null; }
+  return data.id;
 }
 
-// ── LOAD FILE ─────────────────────────────────────────
-function loadGPXText(text, filename) {
-  const { pts, name } = parseGPX(text);
-  if (pts.length < 2) { showToast(`⚠ ${filename}: no track points found`); return; }
+// ── IMPORT HANDLER ────────────────────────────────────
+async function handleFiles(files) {
+  const fileArr = Array.from(files);
+  let done = 0;
+  const progress = document.getElementById('upload-progress');
 
-  const label = name || filename.replace('.gpx','').replace(/_/g,' ');
-  const km = trackDistanceKm(pts);
-  const id = Date.now() + Math.random();
+  for (const file of fileArr) {
+    progress.textContent = `Saving ${done + 1} of ${fileArr.length}: ${file.name}…`;
+    const text   = await readFile(file);
+    const parsed = parseGPXFull(text, file.name);
 
-  activities.push({ id, label, pts, km });
-  pts.forEach(p => allPoints.push([p[0], p[1], 1]));
-  totalKm += km;
+    if (parsed.pts.length < 2) {
+      showToast(`⚠ ${file.name}: no track points found`, 'error');
+      done++; continue;
+    }
 
-  updateStats();
-  updateActivityList();
-  rebuildHeat();
-  showToast(`✓ Loaded: ${label} (${km.toFixed(1)} km)`);
+    const dbId = await saveActivity(parsed, text);
+    if (!dbId) { showToast(`Failed to save ${file.name}`, 'error'); done++; continue; }
+
+    activities.push({ id: dbId, label: parsed.name, pts: parsed.pts, km: parsed.distance_km || 0, duration_s: parsed.duration_s, elevation_m: parsed.elevation_m, date: parsed.date });
+    parsed.pts.forEach(p => allPoints.push([p[0], p[1], 1]));
+    totalKm += (parsed.distance_km || 0);
+    done++;
+
+    updateStats(); updateActivityList(); rebuildHeat();
+    showToast(`✓ ${parsed.name} saved (${(parsed.distance_km||0).toFixed(1)} km)`, 'success');
+  }
+
+  progress.textContent = done > 0 ? `✓ ${done} file${done!==1?'s':''} imported` : '';
+  document.getElementById('sync-badge').style.display = 'inline-flex';
+  setTimeout(() => { progress.textContent = ''; }, 3000);
+}
+
+function readFile(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = () => rej(new Error('Read failed'));
+    r.readAsText(file);
+  });
+}
+
+// ── DELETE ACTIVITY ───────────────────────────────────
+async function removeActivity(id) {
+  const { error } = await sb.from('activities').delete().eq('id', id);
+  if (error) { showToast('Failed to delete activity', 'error'); return; }
+
+  const idx = activities.findIndex(a => a.id === id);
+  if (idx < 0) return;
+  totalKm -= activities[idx].km;
+  activities.splice(idx, 1);
+  allPoints = [];
+  activities.forEach(a => a.pts.forEach(p => allPoints.push([p[0], p[1], 1])));
+  updateStats(); updateActivityList(); rebuildHeat();
+  showToast('Activity deleted', 'success');
+}
+
+// ── UI HELPERS ────────────────────────────────────────
+function formatDuration(s) {
+  if (!s) return '—';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 
 function updateStats() {
-  document.getElementById('stat-runs').textContent = activities.length;
-  document.getElementById('stat-km').textContent = totalKm.toFixed(1);
+  document.getElementById('stat-runs').textContent   = activities.length;
+  document.getElementById('stat-km').textContent     = totalKm.toFixed(1);
   document.getElementById('stat-points').textContent = allPoints.length.toLocaleString();
-  document.getElementById('act-count').textContent = `${activities.length} file${activities.length !== 1 ? 's' : ''}`;
+  document.getElementById('act-count').textContent   = `${activities.length} file${activities.length!==1?'s':''}`;
 }
 
 function updateActivityList() {
@@ -608,11 +764,13 @@ function updateActivityList() {
   }
   list.innerHTML = activities.map(a => `
     <li class="activity-item">
-      <div>
+      <div class="activity-info">
         <div class="activity-name">${escHtml(a.label)}</div>
-        <div class="activity-meta">${a.pts.length.toLocaleString()} pts · ${a.km.toFixed(2)} km</div>
+        <div class="activity-meta">
+          ${a.date || ''}${a.date ? ' · ' : ''}${(a.km||0).toFixed(2)} km · ${formatDuration(a.duration_s)} · ${a.pts.length.toLocaleString()} pts${a.elevation_m ? ' · ↑' + a.elevation_m + 'm' : ''}
+        </div>
       </div>
-      <button class="activity-del" data-id="${a.id}" title="Remove">✕</button>
+      <button class="activity-del" data-id="${a.id}" title="Delete">✕</button>
     </li>
   `).join('');
   list.querySelectorAll('.activity-del').forEach(btn => {
@@ -620,79 +778,47 @@ function updateActivityList() {
   });
 }
 
-function removeActivity(id) {
-  const idx = activities.findIndex(a => a.id == id);
-  if (idx < 0) return;
-  const act = activities[idx];
-  totalKm -= act.km;
-  activities.splice(idx, 1);
-  // Rebuild allPoints from scratch
-  allPoints = [];
-  activities.forEach(a => a.pts.forEach(p => allPoints.push([p[0], p[1], 1])));
-  updateStats();
-  updateActivityList();
-  rebuildHeat();
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function showLoading(msg) {
+  document.getElementById('loading-text').textContent = msg || 'Loading…';
+  document.getElementById('loading-overlay').classList.add('show');
+}
+function hideLoading() { document.getElementById('loading-overlay').classList.remove('show'); }
+
+let toastTimer;
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = type ? `show ${type}` : 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', 3200);
 }
 
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+// ── FILE INPUT WIRING ─────────────────────────────────
+document.getElementById('gpx-input').addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+document.getElementById('gpx-header-input').addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
 
-// ── FILE INPUT HANDLING ───────────────────────────────
-function handleFiles(files) {
-  Array.from(files).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => loadGPXText(e.target.result, file.name);
-    reader.readAsText(file);
-  });
-}
-
-document.getElementById('gpx-input').addEventListener('change', e => {
-  handleFiles(e.target.files);
-  e.target.value = '';
-});
-document.getElementById('gpx-header-input').addEventListener('change', e => {
-  handleFiles(e.target.files);
-  e.target.value = '';
-});
-
-// ── DRAG & DROP ───────────────────────────────────────
 const dz = document.getElementById('drop-zone');
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-dz.addEventListener('drop', e => {
-  e.preventDefault();
-  dz.classList.remove('drag-over');
-  handleFiles(e.dataTransfer.files);
-});
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
 
-// ── TOOLBAR BUTTONS ───────────────────────────────────
-document.getElementById('btn-fit').addEventListener('click', () => {
-  if (allPoints.length === 0) return;
-  const lats = allPoints.map(p => p[0]);
-  const lngs = allPoints.map(p => p[1]);
-  map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]], { padding: [30,30] });
-});
-
-document.getElementById('btn-clear').addEventListener('click', () => {
+document.getElementById('btn-fit').addEventListener('click', fitMap);
+document.getElementById('btn-clear').addEventListener('click', async () => {
+  if (!confirm('Delete ALL activities from your account? This cannot be undone.')) return;
+  showLoading('Deleting all activities…');
+  await sb.from('activities').delete().eq('user_id', currentUser.id);
   activities = []; allPoints = []; totalKm = 0;
   updateStats(); updateActivityList(); rebuildHeat();
+  hideLoading();
   document.getElementById('map-status').textContent = 'No data loaded';
-  showToast('Cleared all activities');
+  document.getElementById('sync-badge').style.display = 'none';
+  showToast('All activities deleted');
 });
 
-// ── TOAST ─────────────────────────────────────────────
-let toastTimer;
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
-}
-
-// Init zoom badge
-document.getElementById('zoom-badge').textContent = `Zoom: ${map.getZoom()}`;
+// Enter key on auth inputs
+document.getElementById('auth-password').addEventListener('keydown', e => { if (e.key === 'Enter') handleAuth(); });
+document.getElementById('auth-email').addEventListener('keydown', e => { if (e.key === 'Enter') handleAuth(); });
 </script>
 </body>
 </html>

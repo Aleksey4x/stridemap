@@ -467,6 +467,7 @@ sb.auth.onAuthStateChange(async (event, session) => {
     document.getElementById('app').classList.add('visible');
     document.getElementById('user-email-display').textContent = currentUser.email;
     initMap();
+    await new Promise(r => setTimeout(r, 150));
     await loadActivities();
   }
 });
@@ -539,7 +540,7 @@ async function loadActivities() {
     const timeout = new Promise((_, rej) =>
       setTimeout(() => rej(new Error('timeout')), 10000));
     const query = sb.from('activities')
-      .select('id, name, date, distance_km, duration_s, elevation_m, point_count, gpx_raw, activity_type, calories, avg_heartrate, max_heartrate, avg_pace')
+      .select('id, name, date, distance_km, duration_s, elevation_m, point_count, coords, activity_type, calories, avg_heartrate, max_heartrate, avg_pace')
       .order('date', { ascending: false });
     ({ data, error } = await Promise.race([query, timeout]));
   } catch (e) {
@@ -554,8 +555,13 @@ async function loadActivities() {
   if (!data || data.length === 0) { updateActivityList(); return; }
 
   data.forEach(row => {
-    if (!row.gpx_raw) return;
-    const pts = extractPoints(row.gpx_raw);
+    // Use pre-stored coords (fast) — fall back to parsing gpx_raw for old records
+    let pts = [];
+    if (row.coords && row.coords.length > 0) {
+      pts = row.coords; // already [[lat,lng], ...]
+    } else if (row.gpx_raw) {
+      pts = extractPoints(row.gpx_raw);
+    }
     if (pts.length === 0) return;
     activities.push({
       id: row.id, label: row.name, pts,
@@ -709,7 +715,8 @@ async function saveActivity(parsed, gpxRaw) {
     max_cadence:   parsed.max_cadence,
     avg_pace:      parsed.avg_pace,
     point_count:   parsed.point_count,
-    gpx_raw:       gpxRaw
+    coords:        parsed.pts,   // lightweight [[lat,lng],...] for fast heatmap loading
+    gpx_raw:       gpxRaw        // full GPX kept for future export feature
   }]).select('id').single();
 
   if (error) { console.error('Save error:', error); return null; }

@@ -1,2 +1,2 @@
 # stride_map
-My running map
+Personal running heatmap viewer

@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>StrideMap — Your Running Heatmap</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+  <!-- Leaflet.heat via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg:        #0b0c10;
+      --surface:   #13151a;
+      --surface2:  #1c1f28;
+      --accent:    #ff5c1a;
+      --accent2:   #ff8c42;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --border:    #252933;
+      --radius:    10px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* ── HEADER ─────────────────────────────────────── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(11,12,16,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 60px;
+    }
+    .logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.7rem;
+      letter-spacing: .08em;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+    }
+    .logo span { color: var(--accent); }
+    .logo-icon {
+      width: 28px; height: 28px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-icon svg { width: 16px; height: 16px; fill: white; }
+
+    nav { display: flex; gap: 1.4rem; align-items: center; }
+    nav a {
+      font-size: .85rem;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      letter-spacing: .04em;
+      transition: color .2s;
+    }
+    nav a:hover { color: var(--text); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: .4rem;
+      padding: .45rem 1.1rem;
+      border-radius: var(--radius);
+      font-family: 'DM Sans', sans-serif;
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+      border: none;
+    }
+    .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--surface2); }
+
+    /* ── HERO STATS BAR ─────────────────────────────── */
+    .stats-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+      gap: 0;
+      overflow-x: auto;
+    }
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: .85rem 2.2rem;
+      border-right: 1px solid var(--border);
+      min-width: 130px;
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-num {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.6rem;
+      color: var(--accent);
+      letter-spacing: .04em;
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: .7rem;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      margin-top: .2rem;
+    }
+
+    /* ── MAIN BODY ──────────────────────────────────── */
+    .main {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 1.5rem 2rem 2rem;
+      gap: 1.2rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .section-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.2rem;
+      letter-spacing: .1em;
+      color: var(--muted);
+      margin-bottom: .5rem;
+    }
+
+    /* ── MAP CARD ───────────────────────────────────── */
+    .map-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+    }
+    .map-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .75rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .map-toolbar-left { display: flex; align-items: center; gap: .8rem; }
+    .map-toolbar-right { display: flex; align-items: center; gap: .8rem; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .3rem .8rem;
+      border-radius: 20px;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+    }
+    .badge-orange { background: rgba(255,92,26,.15); color: var(--accent); border: 1px solid rgba(255,92,26,.3); }
+    .badge-muted { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+    #map {
+      width: 100%;
+      height: 520px;
+      background: #111418;
+    }
+
+    /* Leaflet dark tile override */
+    .leaflet-tile-pane { filter: brightness(.85) saturate(.6); }
+
+    /* ── LEGEND ─────────────────────────────────────── */
+    .legend-bar {
+      display: flex;
+      align-items: center;
+      gap: .8rem;
+      padding: .7rem 1.2rem;
+      border-top: 1px solid var(--border);
+    }
+    .legend-label { font-size: .75rem; color: var(--muted); white-space: nowrap; }
+    .legend-gradient {
+      flex: 1;
+      height: 10px;
+      border-radius: 6px;
+      background: linear-gradient(to right,
+        #2d004b,
+        #6b0095,
+        #b4006a,
+        #e84a00,
+        #ff9500,
+        #ffdd00,
+        #ffffff
+      );
+      max-width: 320px;
+    }
+
+    /* ── UPLOAD ZONE ────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all .25s;
+      background: var(--surface);
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(255,92,26,.05);
+    }
+    .upload-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+    .upload-icon {
+      width: 48px; height: 48px;
+      background: rgba(255,92,26,.1);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1rem;
+    }
+    .upload-icon svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; }
+    .upload-title { font-weight: 600; margin-bottom: .3rem; }
+    .upload-sub { font-size: .82rem; color: var(--muted); }
+
+    /* ── ACTIVITY LIST ──────────────────────────────── */
+    .activities-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: .9rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-title {
+      font-weight: 600;
+      font-size: .9rem;
+    }
+    #activity-list { list-style: none; max-height: 220px; overflow-y: auto; }
+    #activity-list::-webkit-scrollbar { width: 4px; }
+    #activity-list::-webkit-scrollbar-track { background: transparent; }
+    #activity-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .activity-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .7rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      font-size: .85rem;
+      transition: background .15s;
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-item:hover { background: var(--surface2); }
+    .activity-name { font-weight: 500; }
+    .activity-meta { color: var(--muted); font-size: .78rem; }
+    .activity-del {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 1rem; padding: 0 .3rem;
+      transition: color .15s;
+    }
+    .activity-del:hover { color: var(--accent); }
+    .empty-state {
+      padding: 2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: .85rem;
+    }
+
+    /* ── FOOTER ─────────────────────────────────────── */
+    footer {
+      margin-top: auto;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 1.2rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: .8rem;
+    }
+    .footer-logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.2rem;
+      letter-spacing: .08em;
+      color: var(--muted);
+    }
+    .footer-logo span { color: var(--accent); }
+    .footer-links { display: flex; gap: 1.2rem; }
+    .footer-links a { font-size: .78rem; color: var(--muted); text-decoration: none; }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy { font-size: .75rem; color: var(--muted); }
+
+    /* ── TOAST ──────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      color: var(--text);
+      padding: .75rem 1.2rem;
+      border-radius: 8px;
+      font-size: .85rem;
+      font-weight: 500;
+      transform: translateX(120%);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+      z-index: 9999;
+      max-width: 280px;
+    }
+    #toast.show { transform: translateX(0); }
+
+    @media (max-width: 640px) {
+      .main { padding: 1rem; }
+      nav { display: none; }
+      header { padding: 0 1rem; }
+      .stat-item { padding: .7rem 1rem; min-width: 90px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ───────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M13 3L5 14h7l-1 7 8-11h-7l1-7z"/>
+      </svg>
+    </div>
+    Stride<span>Map</span>
+  </div>
+  <nav>
+    <a href="#">Dashboard</a>
+    <a href="#">Activities</a>
+    <a href="#">Stats</a>
+    <a href="#">Settings</a>
+  </nav>
+  <div style="display:flex; gap:.6rem;">
+    <label class="btn btn-primary" style="cursor:pointer;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      Import GPX
+      <input type="file" id="gpx-header-input" accept=".gpx" multiple style="display:none"/>
+    </label>
+  </div>
+</header>
+
+<!-- ── STATS BAR ────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-num" id="stat-runs">0</div>
+    <div class="stat-label">Activities</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num" id="stat-km">0.0</div>
+    <div class="stat-label">Total km</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num" id="stat-points">0</div>
+    <div class="stat-label">GPS Points</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num" id="stat-heatpts">0</div>
+    <div class="stat-label">Heat Points</div>
+  </div>
+</div>
+
+<!-- ── MAIN ─────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Map section -->
+  <div>
+    <div class="section-title">Heatmap</div>
+    <div class="map-card">
+      <div class="map-toolbar">
+        <div class="map-toolbar-left">
+          <span class="badge badge-orange" id="map-status">No data loaded</span>
+          <span class="badge badge-muted" id="zoom-badge">Zoom: 13</span>
+        </div>
+        <div class="map-toolbar-right">
+          <button class="btn btn-ghost" id="btn-fit">Fit all tracks</button>
+          <button class="btn btn-ghost" id="btn-clear">Clear all</button>
+        </div>
+      </div>
+      <div id="map"></div>
+      <div class="legend-bar">
+        <span class="legend-label">Low freq</span>
+        <div class="legend-gradient"></div>
+        <span class="legend-label">High freq</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload + Activity list (side by side on wide screens) -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; flex-wrap:wrap;">
+
+    <!-- Drop zone -->
+    <div>
+      <div class="section-title">Import</div>
+      <div class="upload-zone" id="drop-zone">
+        <input type="file" id="gpx-input" accept=".gpx" multiple/>
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24" stroke-width="1.8">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke-linecap="round"/>
+            <polyline points="17 8 12 3 7 8" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="12" y1="3" x2="12" y2="15" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="upload-title">Drop GPX files here</div>
+        <div class="upload-sub">or click to browse — supports multiple files<br>from Garmin Connect &amp; Strava exports</div>
+      </div>
+    </div>
+
+    <!-- Activity list -->
+    <div>
+      <div class="section-title">Activities</div>
+      <div class="activities-panel">
+        <div class="panel-header">
+          <span class="panel-title">Loaded runs</span>
+          <span class="badge badge-muted" id="act-count">0 files</span>
+        </div>
+        <ul id="activity-list">
+          <li class="empty-state">No activities yet. Import some GPX files to begin.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── FOOTER ────────────────────────────────────────── -->
+<footer>
+  <div class="footer-logo">Stride<span>Map</span></div>
+  <div class="footer-links">
+    <a href="#">Privacy</a>
+    <a href="#">About</a>
+    <a href="#">GitHub</a>
+  </div>
+  <div class="footer-copy">All data stays in your browser. Nothing is uploaded.</div>
+</footer>
+
+<div id="toast"></div>
+
+<script>
+// ── MAP SETUP ─────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([52.5, 5.3], 7);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap, © CARTO',
+  subdomains: 'abcd',
+  maxZoom: 19
+}).addTo(map);
+
+// ── HEATMAP ───────────────────────────────────────────
+// Custom gradient: dark-violet → purple → red-orange → orange → yellow → white
+const heatGradient = {
+  0.0: '#1a0030',
+  0.15: '#4b0082',
+  0.3:  '#8b0050',
+  0.45: '#cc2200',
+  0.6:  '#ff5c1a',
+  0.75: '#ffaa00',
+  0.88: '#ffee66',
+  1.0:  '#ffffff'
+};
+
+let heatLayer = null;
+let allPoints = []; // [lat, lng, intensity]
+let activities = [];
+let totalKm = 0;
+
+function rebuildHeat() {
+  if (heatLayer) map.removeLayer(heatLayer);
+  if (allPoints.length === 0) return;
+
+  const zoom = map.getZoom();
+  // Radius and blur scale with zoom for natural merging at low zoom
+  const radius = Math.max(6, Math.round(zoom * 1.2));
+  const blur   = Math.max(10, Math.round(zoom * 1.8));
+
+  heatLayer = L.heatLayer(allPoints, {
+    radius,
+    blur,
+    maxZoom: 18,
+    gradient: heatGradient,
+    minOpacity: 0.55
+  }).addTo(map);
+
+  // Update stats
+  document.getElementById('stat-heatpts').textContent = allPoints.length.toLocaleString();
+  document.getElementById('map-status').textContent = `${activities.length} track${activities.length !== 1 ? 's' : ''} loaded`;
+}
+
+map.on('zoomend', () => {
+  document.getElementById('zoom-badge').textContent = `Zoom: ${map.getZoom()}`;
+  rebuildHeat();
+});
+map.on('zoomend', () => {
+  document.getElementById('zoom-badge').textContent = `Zoom: ${map.getZoom()}`;
+});
+
+// ── GPX PARSING ───────────────────────────────────────
+function parseGPX(text) {
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(text, 'application/xml');
+  const trkpts = xml.querySelectorAll('trkpt');
+  const pts = [];
+  trkpts.forEach(pt => {
+    const lat = parseFloat(pt.getAttribute('lat'));
+    const lon = parseFloat(pt.getAttribute('lon'));
+    if (!isNaN(lat) && !isNaN(lon)) pts.push([lat, lon]);
+  });
+  // Also check wpt and rtept
+  if (pts.length === 0) {
+    xml.querySelectorAll('wpt, rtept').forEach(pt => {
+      const lat = parseFloat(pt.getAttribute('lat'));
+      const lon = parseFloat(pt.getAttribute('lon'));
+      if (!isNaN(lat) && !isNaN(lon)) pts.push([lat, lon]);
+    });
+  }
+  // Extract name
+  const nameEl = xml.querySelector('name');
+  const name = nameEl ? nameEl.textContent.trim() : null;
+  return { pts, name };
+}
+
+function haversineKm(a, b) {
+  const R = 6371;
+  const dLat = (b[0]-a[0]) * Math.PI/180;
+  const dLon = (b[1]-a[1]) * Math.PI/180;
+  const s = Math.sin(dLat/2)**2 +
+    Math.cos(a[0]*Math.PI/180) * Math.cos(b[0]*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+}
+
+function trackDistanceKm(pts) {
+  let d = 0;
+  for (let i = 1; i < pts.length; i++) d += haversineKm(pts[i-1], pts[i]);
+  return d;
+}
+
+// ── LOAD FILE ─────────────────────────────────────────
+function loadGPXText(text, filename) {
+  const { pts, name } = parseGPX(text);
+  if (pts.length < 2) { showToast(`⚠ ${filename}: no track points found`); return; }
+
+  const label = name || filename.replace('.gpx','').replace(/_/g,' ');
+  const km = trackDistanceKm(pts);
+  const id = Date.now() + Math.random();
+
+  activities.push({ id, label, pts, km });
+  pts.forEach(p => allPoints.push([p[0], p[1], 1]));
+  totalKm += km;
+
+  updateStats();
+  updateActivityList();
+  rebuildHeat();
+  showToast(`✓ Loaded: ${label} (${km.toFixed(1)} km)`);
+}
+
+function updateStats() {
+  document.getElementById('stat-runs').textContent = activities.length;
+  document.getElementById('stat-km').textContent = totalKm.toFixed(1);
+  document.getElementById('stat-points').textContent = allPoints.length.toLocaleString();
+  document.getElementById('act-count').textContent = `${activities.length} file${activities.length !== 1 ? 's' : ''}`;
+}
+
+function updateActivityList() {
+  const list = document.getElementById('activity-list');
+  if (activities.length === 0) {
+    list.innerHTML = '<li class="empty-state">No activities yet. Import some GPX files to begin.</li>';
+    return;
+  }
+  list.innerHTML = activities.map(a => `
+    <li class="activity-item">
+      <div>
+        <div class="activity-name">${escHtml(a.label)}</div>
+        <div class="activity-meta">${a.pts.length.toLocaleString()} pts · ${a.km.toFixed(2)} km</div>
+      </div>
+      <button class="activity-del" data-id="${a.id}" title="Remove">✕</button>
+    </li>
+  `).join('');
+  list.querySelectorAll('.activity-del').forEach(btn => {
+    btn.addEventListener('click', () => removeActivity(btn.dataset.id));
+  });
+}
+
+function removeActivity(id) {
+  const idx = activities.findIndex(a => a.id == id);
+  if (idx < 0) return;
+  const act = activities[idx];
+  totalKm -= act.km;
+  activities.splice(idx, 1);
+  // Rebuild allPoints from scratch
+  allPoints = [];
+  activities.forEach(a => a.pts.forEach(p => allPoints.push([p[0], p[1], 1])));
+  updateStats();
+  updateActivityList();
+  rebuildHeat();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── FILE INPUT HANDLING ───────────────────────────────
+function handleFiles(files) {
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => loadGPXText(e.target.result, file.name);
+    reader.readAsText(file);
+  });
+}
+
+document.getElementById('gpx-input').addEventListener('change', e => {
+  handleFiles(e.target.files);
+  e.target.value = '';
+});
+document.getElementById('gpx-header-input').addEventListener('change', e => {
+  handleFiles(e.target.files);
+  e.target.value = '';
+});
+
+// ── DRAG & DROP ───────────────────────────────────────
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+
+// ── TOOLBAR BUTTONS ───────────────────────────────────
+document.getElementById('btn-fit').addEventListener('click', () => {
+  if (allPoints.length === 0) return;
+  const lats = allPoints.map(p => p[0]);
+  const lngs = allPoints.map(p => p[1]);
+  map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]], { padding: [30,30] });
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  activities = []; allPoints = []; totalKm = 0;
+  updateStats(); updateActivityList(); rebuildHeat();
+  document.getElementById('map-status').textContent = 'No data loaded';
+  showToast('Cleared all activities');
+});
+
+// ── TOAST ─────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// Init zoom badge
+document.getElementById('zoom-badge').textContent = `Zoom: ${map.getZoom()}`;
+</script>
+</body>
+</html>
